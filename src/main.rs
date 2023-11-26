@@ -11,6 +11,10 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use sha2::{Sha256, Digest};
 use sha2::digest::Output;
 
+use std::io::prelude::*;
+use flate2::Compression;
+use flate2::write::{ZlibEncoder, GzDecoder};
+
 /// A fictional versioning CLI
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "rinit")]
@@ -104,7 +108,7 @@ fn do_hash_object_command(storage: Storage) {
     let content = read_stdin();
     let hash = calc_hash(&content);
 
-    storage.persist_object(&content, &hash);
+    storage.persist_object(&hash, &content);
 
     println!("{}", hash);
 }
@@ -116,9 +120,25 @@ fn do_cat_file_command(storage: Storage, args: CatFileArgs) {
 }
 
 fn create_file(file_path: &PathBuf, content: &String) {
-    let mut file = fs::File::create(file_path).expect("calc_content_hash: panic message");
+    let mut e = ZlibEncoder::new(Vec::new(), Compression::default());
+    e.write_all(content.as_ref())
+        .expect("Can't compress content");
 
-    file.write_all(content.as_ref()).expect("TODO: panic message");
+    let compressed_bytes = e.finish().unwrap();
+    let mut file = fs::File::create(file_path)
+        .expect("Can't create file");
+
+    file.write_all(&*compressed_bytes)
+        .expect("Can't write compressed content to file");
+}
+
+fn read_file(path: PathBuf) -> String {
+    let data = fs::read(path).unwrap();
+    let mut d = GzDecoder::new(data);
+    let mut buffer = String::new();
+    d.write_all((&mut buffer).as_ref()).unwrap();
+
+    buffer
 }
 
 fn calc_hash(content: &String) -> String {
@@ -126,10 +146,6 @@ fn calc_hash(content: &String) -> String {
 
     hasher.update(content);
     format!("{:X}", hasher.finalize())
-}
-
-fn read_file(path: PathBuf) -> String {
-    fs::read_to_string(path).unwrap()
 }
 
 fn read_stdin() -> String {
