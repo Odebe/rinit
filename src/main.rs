@@ -43,80 +43,85 @@ struct CatFileArgs {
     hash: Option<String>
 }
 
+struct Storage {
+    root: PathBuf
+}
+
+impl Storage {
+    fn new(path: PathBuf) -> Self {
+        Self { root: path.join(".rinit") }
+    }
+
+    fn objects_path(&self) -> PathBuf { self.root.join("objects") }
+    fn info_path(&self) -> PathBuf { self.objects_path().join("info") }
+    fn pack_path(&self) -> PathBuf { self.objects_path().join("pack") }
+
+    fn init(&self) {
+        create_dir(&self.root);
+        create_dir(&self.root.join("objects/info"));
+        create_dir(&self.root.join("objects/pack"));
+    }
+
+    fn persist_object(&self, hash: &String, content: &String) {
+        let (catalog, index) = hash.split_at(2);
+        let obj_dir = self.objects_path().join(catalog);
+
+        create_dir(&obj_dir);
+        create_file(&obj_dir.join(index), &content);
+    }
+
+    fn read_object(&self, hash: &String) -> String {
+        let (catalog, index) = hash.split_at(2);
+        let obj_path = self.objects_path().join(catalog).join(index);
+
+        read_file(obj_path)
+    }
+}
+
 fn main() {
     let args = Cli::parse();
-    let current_dir = get_current_dir();
+    let storage = Storage::new(get_current_dir());
 
     match args.command {
         Commands::Init { } => {
-            do_init_command(current_dir)
+            do_init_command(storage)
         },
         Commands::HashObject(_) => {
-            do_hash_object_command(current_dir)
+            do_hash_object_command(storage)
         },
         Commands::CatFile(args) => {
-            do_cat_file_command(current_dir, args)
+            do_cat_file_command(storage, args)
         }
     }
 }
 
-fn do_init_command(path: PathBuf) {
-    let rinit_path = path.join(".rinit");
-
-    create_dir(&rinit_path);
-    create_dir(&rinit_path.join("objects/info"));
-    create_dir(&rinit_path.join("objects/pack"));
-
-    println!("Initialized empty rInit repository in {:?}", path);
+fn do_init_command(storage: Storage) {
+    storage.init();
+    println!("Initialized empty rInit repository in {:?}", storage.root);
 }
 
-fn do_hash_object_command(path: PathBuf) {
+fn do_hash_object_command(storage: Storage) {
     let content = read_stdin();
-    let hash = calc_content_hash(&content);
+    let hash = calc_hash(&content);
 
-    persist_object(&content, &hash, path);
+    storage.persist_object(&content, &hash);
 
     println!("{}", hash);
 }
 
-fn do_cat_file_command(path: PathBuf, args: CatFileArgs) {
-    let content = read_object(path, args.hash.unwrap());
+fn do_cat_file_command(storage: Storage, args: CatFileArgs) {
+    let content = storage.read_object(&args.hash.unwrap());
 
     println!("{}", content);
 }
 
-fn read_object(path: PathBuf, hash: String) -> String {
-    let (catalog, index) = hash.split_at(2);
-    let rinit_path = path.join(".rinit");
-    let obj_path =
-        rinit_path
-            .join("objects/info/")
-            .join(catalog)
-            .join(index);
-
-    read_file(obj_path)
-}
-
-fn persist_object(content: &String, hash: &String, path: PathBuf) {
-    let (catalog, index) = hash.split_at(2);
-
-    let rinit_path = path.join(".rinit");
-    let obj_dir =
-        rinit_path
-            .join("objects/info/")
-            .join(catalog);
-
-    create_dir(&obj_dir);
-    create_obj_file(&obj_dir.join(index), content);
-}
-
-fn create_obj_file(file_path: &PathBuf, content: &String) {
+fn create_file(file_path: &PathBuf, content: &String) {
     let mut file = fs::File::create(file_path).expect("calc_content_hash: panic message");
 
     file.write_all(content.as_ref()).expect("TODO: panic message");
 }
 
-fn calc_content_hash(content: &String) -> String {
+fn calc_hash(content: &String) -> String {
     let mut hasher = Sha256::new();
 
     hasher.update(content);
@@ -145,4 +150,3 @@ fn create_dir(path: &Path) {
 
 // TODO
 fn get_current_dir() -> PathBuf { current_dir().unwrap() }
-
