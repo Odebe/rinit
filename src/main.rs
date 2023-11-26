@@ -23,20 +23,27 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     Init { },
-    HashObject(HashObjectArgs)
+    HashObject(HashObjectArgs),
+    CatFile(CatFileArgs)
 }
 
 #[derive(Debug, Args)]
 struct HashObjectArgs {
     #[arg(short, long, default_value_t = false)]
     stdin: bool,
-    #[arg(short, long, default_value_t = false)]
+    #[arg(short, default_value_t = false)]
     write: bool
 }
 
-fn main() {
-    println!("The current directory is {:?}", get_current_dir());
+#[derive(Debug, Args)]
+struct CatFileArgs {
+    #[arg(short, default_value_t = false)]
+    p: bool,
 
+    hash: Option<String>
+}
+
+fn main() {
     let args = Cli::parse();
     let current_dir = get_current_dir();
 
@@ -46,6 +53,9 @@ fn main() {
         },
         Commands::HashObject(_) => {
             do_hash_object_command(current_dir)
+        },
+        Commands::CatFile(args) => {
+            do_cat_file_command(current_dir, args)
         }
     }
 }
@@ -67,6 +77,24 @@ fn do_hash_object_command(path: PathBuf) {
     persist_object(&content, &hash, path);
 
     println!("{}", hash);
+}
+
+fn do_cat_file_command(path: PathBuf, args: CatFileArgs) {
+    let content = read_object(path, args.hash.unwrap());
+
+    println!("{}", content);
+}
+
+fn read_object(path: PathBuf, hash: String) -> String {
+    let (catalog, index) = hash.split_at(2);
+    let rinit_path = path.join(".rinit");
+    let obj_path =
+        rinit_path
+            .join("objects/info/")
+            .join(catalog)
+            .join(index);
+
+    read_file(obj_path)
 }
 
 fn persist_object(content: &String, hash: &String, path: PathBuf) {
@@ -93,6 +121,10 @@ fn calc_content_hash(content: &String) -> String {
 
     hasher.update(content);
     format!("{:X}", hasher.finalize())
+}
+
+fn read_file(path: PathBuf) -> String {
+    fs::read_to_string(path).unwrap()
 }
 
 fn read_stdin() -> String {
