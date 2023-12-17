@@ -6,6 +6,7 @@ use std::fmt::format;
 use std::fs;
 use std::io;
 use std::io::{Read, Write};
+use std::rc::Rc;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use sha2::{Sha256, Digest};
@@ -13,7 +14,7 @@ use sha2::digest::Output;
 
 use std::io::prelude::*;
 use flate2::Compression;
-use flate2::write::{ZlibEncoder, GzDecoder};
+use flate2::write::{ZlibEncoder, ZlibDecoder};
 
 /// A fictional versioning CLI
 #[derive(Debug, Parser)] // requires `derive` feature
@@ -51,6 +52,69 @@ struct Storage {
     root: PathBuf
 }
 
+trait GitObject {
+    fn content(&self) -> Rc<String>;
+    fn hash(&self) -> Rc<String>;
+}
+
+#[derive(Debug)]
+struct GitBlob {
+    content: Rc<String>,
+    hash: Rc<String>
+}
+
+#[derive(Debug)]
+struct GitTree {
+    refs: Vec<GitObjectRef>
+}
+
+#[derive(Debug)]
+enum GitObjectRefType { Blob, Tree }
+
+#[derive(Debug)]
+struct GitObjectRef {
+    // 100644 blob 2f781156939ad540b2434d012446154321e41e03	example_file.txt
+    permissions: u16,
+    ref_type: GitObjectRefType,
+    hash: String,
+    content: String
+}
+
+impl GitObjectRef {
+    fn as_line(&self) -> String {
+        format!("{} {:?} {} {}", self.permissions, self.ref_type, self.hash, self.content)
+    }
+}
+
+impl GitBlob {
+    fn new(content: String) -> Self {
+        Self {
+            hash: Rc::new(calc_hash(&content)),
+            content: Rc::new(content),
+        }
+    }
+}
+
+impl GitObject for GitBlob {
+    fn content(&self) -> Rc<String> { Rc::clone(&self.content) }
+    fn hash(&self) -> Rc<String> { Rc::clone(&self.hash) }
+}
+
+impl GitObject for GitTree {
+    fn content(&self) -> Rc<String> {
+        let value =
+            self.refs
+                .iter()
+                .map(|r| r.as_line())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+        Rc::new(value)
+    }
+
+    fn hash(&self) -> Rc<String> { Rc::new(calc_hash(&self.content())) }
+}
+
 impl Storage {
     fn new(path: PathBuf) -> Self {
         Self { root: path.join(".rinit") }
@@ -66,19 +130,21 @@ impl Storage {
         create_dir(&self.root.join("objects/pack"));
     }
 
-    fn persist_object(&self, hash: &String, content: &String) {
+    fn persist_object(&self, object: &dyn GitObject) {
+        let hash = object.hash();
         let (catalog, index) = hash.split_at(2);
+
         let obj_dir = self.objects_path().join(catalog);
 
         create_dir(&obj_dir);
-        create_file(&obj_dir.join(index), &content);
+        create_file(&obj_dir.join(index), &object.content());
     }
 
-    fn read_object(&self, hash: &String) -> String {
+    fn read_object(&self, hash: &String) -> GitBlob {
         let (catalog, index) = hash.split_at(2);
         let obj_path = self.objects_path().join(catalog).join(index);
 
-        read_file(obj_path)
+        GitBlob::new(read_file(obj_path))
     }
 }
 
@@ -90,8 +156,8 @@ fn main() {
         Commands::Init { } => {
             do_init_command(storage)
         },
-        Commands::HashObject(_) => {
-            do_hash_object_command(storage)
+        Commands::HashObject(args) => {
+            do_hash_object_command(storage, args)
         },
         Commands::CatFile(args) => {
             do_cat_file_command(storage, args)
@@ -104,22 +170,22 @@ fn do_init_command(storage: Storage) {
     println!("Initialized empty rInit repository in {:?}", storage.root);
 }
 
-fn do_hash_object_command(storage: Storage) {
+fn do_hash_object_command(storage: Storage, args: HashObjectArgs) {
     let content = read_stdin();
-    let hash = calc_hash(&content);
+    let object = GitBlob::new(content);
 
-    storage.persist_object(&hash, &content);
+    if args.write == true { storage.persist_object(&object); }
 
-    println!("{}", hash);
+    println!("{:?}", object);
 }
 
 fn do_cat_file_command(storage: Storage, args: CatFileArgs) {
-    let content = storage.read_object(&args.hash.unwrap());
+    let object = storage.read_object(&args.hash.unwrap());
 
-    println!("{}", content);
+    println!("{:?}", object);
 }
 
-fn create_file(file_path: &PathBuf, content: &String) {
+fn create_file(file_path: &PathBuf, content: &str) {
     let mut e = ZlibEncoder::new(Vec::new(), Compression::default());
     e.write_all(content.as_ref())
         .expect("Can't compress content");
@@ -134,11 +200,13 @@ fn create_file(file_path: &PathBuf, content: &String) {
 
 fn read_file(path: PathBuf) -> String {
     let data = fs::read(path).unwrap();
-    let mut d = GzDecoder::new(data);
-    let mut buffer = String::new();
-    d.write_all((&mut buffer).as_ref()).unwrap();
+    let mut writer = Vec::new();
+    let mut z = ZlibDecoder::new(writer);
 
-    buffer
+    z.write_all(&data[..]).unwrap();
+    writer = z.finish().unwrap();
+
+    String::from_utf8(writer).expect("String parsing error")
 }
 
 fn calc_hash(content: &String) -> String {
