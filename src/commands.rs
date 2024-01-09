@@ -23,9 +23,9 @@ pub(crate) struct UpdateIndexArgs {
     #[arg(long, default_value_t = false)]
     pub(crate) cacheinfo: bool,
 
-    pub(crate) permission: Option<u32>,
-    pub(crate) hash: Option<String>,
-    pub(crate) filename: Option<String>,
+    pub(crate) mode: Option<u32>,
+    pub(crate) sha1: Option<String>,
+    pub(crate) path: Option<String>,
 }
 
 
