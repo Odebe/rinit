@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use crate::utils::{hash};
 use std::rc::Rc;
 use crate::structs::GitObjectRefType::Blob;
@@ -6,11 +7,6 @@ use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
 use bitflags::bitflags;
 use std::path::{Path, PathBuf};
-
-pub(crate) trait GitObject {
-    fn content(&self) -> Rc<String>;
-    fn hash(&self) -> Rc<String>;
-}
 
 #[derive(Debug)]
 pub(crate) struct GitBlob {
@@ -21,6 +17,12 @@ pub(crate) struct GitBlob {
 #[derive(Debug)]
 pub(crate) struct GitTree {
     refs: Vec<GitObjectRef>
+}
+
+pub trait GitObject:Debug {
+    fn content(&self) -> Rc<String>;
+    fn hash(&self) -> Rc<String>;
+    fn type_string(&self) -> String;
 }
 
 #[derive(Debug)]
@@ -42,11 +44,19 @@ impl GitObjectRef {
 }
 
 impl GitBlob {
-    pub(crate) fn new(content: String) -> Self {
+    pub fn new(content: &str) -> Self {
+        let ctn_string = content.to_string();
+
         Self {
-            hash: Rc::new(hash::from_string(&content)),
-            content: Rc::new(content),
+            hash: Rc::new(hash::from_string(&ctn_string)),
+            content: Rc::new(content.to_string()),
         }
+    }
+}
+
+impl GitTree {
+    pub(crate) fn new(content: &str) -> Self {
+        Self { refs: vec![] }
     }
 }
 
@@ -159,6 +169,7 @@ impl From<GitIndex> for GitTree {
 impl GitObject for GitBlob {
     fn content(&self) -> Rc<String> { Rc::clone(&self.content) }
     fn hash(&self) -> Rc<String> { Rc::clone(&self.hash) }
+    fn type_string(&self) -> String { "blob".to_string() }
 }
 
 impl GitObject for GitTree {
@@ -174,4 +185,6 @@ impl GitObject for GitTree {
     }
 
     fn hash(&self) -> Rc<String> { Rc::new(hash::from_string(&self.content())) }
+
+    fn type_string(&self) -> String { "tree".to_string() }
 }

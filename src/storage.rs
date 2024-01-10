@@ -6,6 +6,7 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::utils::files::{create_dir, create_file, read_file};
 use crate::structs::*;
+use crate::formats::{serialization, deserialization};
 
 pub(crate) struct Storage {
     pub(crate) root: PathBuf
@@ -32,20 +33,17 @@ impl Storage {
         let (catalog, index) = hash.split_at(2);
         let obj_dir = self.objects_path().join(catalog);
         let file_path = obj_dir.join(index);
-
-        let content = object.content();
-        let header = format!("{} {}", "blob", content.len());
-        let body = format!("{}\0{}", header, content);
+        let body = serialization::call(object);
 
         create_dir(&obj_dir);
         create_file(&file_path, &body);
     }
 
-    pub(crate) fn read_object(&self, hash: &String) -> GitBlob {
+    pub(crate) fn read_object(&self, hash: &String) -> Box<dyn GitObject> {
         let (catalog, index) = hash.split_at(2);
         let obj_path = self.objects_path().join(catalog).join(index);
 
-        GitBlob::new(read_file(obj_path))
+        deserialization::call(read_file(obj_path))
     }
 
     pub(crate) fn read_index(&self) -> GitIndex {

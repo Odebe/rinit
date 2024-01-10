@@ -12,7 +12,7 @@ pub mod hash {
         let mut hasher = Sha256::new();
 
         hasher.update(content);
-        format!("{:X}", hasher.finalize())
+        format!("{:x}", hasher.finalize())
     }
 }
 
