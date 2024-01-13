@@ -1,46 +1,54 @@
 use clap::{Args, Parser, Subcommand};
+use crate::storage::Storage;
 
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "rinit")]
 #[command(about = "A fictional versioning CLI", long_about = None)]
-pub(crate) struct Cli {
+pub struct Cli {
     #[command(subcommand)]
-    pub(crate) command: Commands,
+    pub command: Commands,
 }
 
 #[derive(Debug, Subcommand)]
-pub(crate) enum Commands {
+pub enum Commands {
     Init { },
     HashObject(HashObjectArgs),
+    WriteTree(WriteTreeArgs),
     CatFile(CatFileArgs),
     UpdateIndex(UpdateIndexArgs),
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct UpdateIndexArgs {
+pub struct UpdateIndexArgs {
     #[arg(long, default_value_t = false)]
-    pub(crate) add: bool,
+    pub add: bool,
     #[arg(long, default_value_t = false)]
-    pub(crate) cacheinfo: bool,
+    pub cacheinfo: bool,
 
-    pub(crate) mode: Option<u32>,
-    pub(crate) sha1: Option<String>,
-    pub(crate) path: Option<String>,
+    pub mode: Option<u32>,
+    pub sha1: Option<String>,
+    pub path: Option<String>,
 }
 
+#[derive(Debug, Args)]
+pub struct WriteTreeArgs {
+}
 
 #[derive(Debug, Args)]
-pub(crate) struct HashObjectArgs {
+pub struct HashObjectArgs {
     #[arg(short, long, default_value_t = false)]
-    pub(crate) stdin: bool,
+    pub stdin: bool,
     #[arg(short, default_value_t = false)]
-    pub(crate) write: bool
+    pub write: bool,
+
+    #[arg(last = true)]
+    pub filepath: Option<String>
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct CatFileArgs {
+pub struct CatFileArgs {
     #[arg(short, default_value_t = false)]
-    pub(crate) p: bool,
+    pub p: bool,
 
-    pub(crate) hash: Option<String>
+    pub hash: Option<String>
 }

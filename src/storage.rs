@@ -1,52 +1,62 @@
-use std::path::{PathBuf};
+use std::path::{PathBuf, Path};
 use std::fs;
 use std::io::{self, Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::utils::files::{create_dir, create_file, read_file};
+use crate::utils::files::{create_dir, create_file, read_object_file, read_file};
 use crate::structs::*;
 use crate::formats::{serialization, deserialization};
 
-pub(crate) struct Storage {
-    pub(crate) root: PathBuf
+pub struct Storage {
+    pub working_root: PathBuf
 }
 
 impl Storage {
-    pub(crate) fn new(path: PathBuf) -> Self {
-        Self { root: path.join(".rinit") }
+    pub fn new(path: PathBuf) -> Self {
+        Self { working_root: path }
     }
 
-    fn objects_path(&self) -> PathBuf { self.root.join("objects") }
+    pub(crate) fn root(&self) -> PathBuf { self.working_root.join(".rinit") }
+    fn objects_path(&self) -> PathBuf { self.root().join("objects") }
     fn info_path(&self) -> PathBuf { self.objects_path().join("info") }
     fn pack_path(&self) -> PathBuf { self.objects_path().join("pack") }
-    fn index_path(&self) -> PathBuf { self.root.join("index") }
+    fn index_path(&self) -> PathBuf { self.root().join("index") }
 
-    pub(crate) fn init(&self) {
-        create_dir(&self.root);
-        create_dir(&self.root.join("objects/info"));
-        create_dir(&self.root.join("objects/pack"));
+    pub fn object_path(&self, hash: &str) -> PathBuf {
+        let (catalog, index) = hash.split_at(2);
+        self.objects_path().join(catalog).join(index)
     }
 
-    pub(crate) fn persist_object(&self, object: &dyn GitObject) {
+    pub fn object_exists(&self, hash: &str) -> bool {
+        self.object_path(hash).exists()
+    }
+
+    pub fn init(&self) {
+        create_dir(&self.root());
+        create_dir(&self.root().join("objects/info"));
+        create_dir(&self.root().join("objects/pack"));
+    }
+
+    pub fn persist_object(&self, object: &dyn GitObject) {
         let hash = object.hash();
         let (catalog, index) = hash.split_at(2);
         let obj_dir = self.objects_path().join(catalog);
-        let file_path = obj_dir.join(index);
+        let file_path = self.object_path( &object.hash());
         let body = serialization::call(object);
 
         create_dir(&obj_dir);
         create_file(&file_path, &body);
     }
 
-    pub(crate) fn read_object(&self, hash: &String) -> Box<dyn GitObject> {
+    pub fn read_object(&self, hash: &String) -> Box<dyn GitObject> {
         let (catalog, index) = hash.split_at(2);
         let obj_path = self.objects_path().join(catalog).join(index);
 
-        deserialization::call(read_file(obj_path))
+        deserialization::call(read_object_file(obj_path))
     }
 
-    pub(crate) fn read_index(&self) -> GitIndex {
+    pub fn read_index(&self) -> GitIndex {
         let path = self.index_path();
 
         if path.exists() {
@@ -56,8 +66,12 @@ impl Storage {
         }
     }
 
-    pub(crate) fn save_index(&self, index: &GitIndex) {
+    pub fn save_index(&self, index: &GitIndex) {
         write_git_index(&self.index_path(), index).unwrap();
+    }
+
+    pub fn read_file(&self, path: String) -> String {
+        read_file(self.working_root.join(path))
     }
 }
 
@@ -159,7 +173,7 @@ fn parse_git_index(file_path: &PathBuf) -> io::Result<GitIndex> {
         let raw_flags = file.read_u16::<BigEndian>()?;
         let flags = Flags::from_bits_retain(raw_flags);
 
-        if flags.contains(Flags::EXTENDED) {
+        if flags.intersects(Flags::EXTENDED) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Not supported entry flag (EXTENDED)",
@@ -167,7 +181,7 @@ fn parse_git_index(file_path: &PathBuf) -> io::Result<GitIndex> {
         };
 
         let path =
-            if flags.contains(Flags::PATH_LEN) {
+            if flags.intersects(Flags::PATH_LEN) {
                 parse_entry_path(&mut file)?
             } else {
                 return Err(io::Error::new(

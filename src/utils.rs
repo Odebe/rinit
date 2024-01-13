@@ -4,7 +4,7 @@ pub mod hash {
     use sha2::{Sha256, Digest};
 
     pub fn from_path(path: impl Into<PathBuf>) -> String {
-        let content = files::read_file(path.into());
+        let content = files::read_object_file(path.into());
         from_string(&content)
     }
 
@@ -43,7 +43,7 @@ pub mod files {
         });
     }
 
-    pub fn read_file(path: PathBuf) -> String {
+    pub fn read_object_file(path: PathBuf) -> String {
         let data = fs::read(path).unwrap();
         let mut writer = Vec::new();
         let mut z = ZlibDecoder::new(writer);
@@ -55,11 +55,11 @@ pub mod files {
     }
 
     // TODO
-    pub(crate) fn get_current_dir() -> PathBuf {
+    pub fn get_current_dir() -> PathBuf {
         current_dir().unwrap()
     }
 
-    pub(crate) fn read_stdin() -> String {
+    pub fn read_stdin() -> String {
         let mut content = String::new();
 
         io::stdin()
@@ -67,5 +67,10 @@ pub mod files {
             .expect("read_stdin: panic message");
 
         content
+    }
+
+    pub fn read_file(path: impl Into<PathBuf> + AsRef<Path>) -> String {
+        let data = fs::read(path).unwrap();
+        String::from_utf8(data).unwrap()
     }
 }

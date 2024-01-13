@@ -5,18 +5,19 @@ use crate::structs::GitObjectRefType::Blob;
 use std::fs;
 use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
-use bitflags::bitflags;
+use bitflags::{bitflags};
 use std::path::{Path, PathBuf};
+use crate::formats::tree;
 
 #[derive(Debug)]
-pub(crate) struct GitBlob {
+pub struct GitBlob {
     content: Rc<String>,
     hash: Rc<String>
 }
 
 #[derive(Debug)]
-pub(crate) struct GitTree {
-    refs: Vec<GitObjectRef>
+pub struct GitTree {
+    pub refs: Vec<GitObjectRef>
 }
 
 pub trait GitObject:Debug {
@@ -29,17 +30,17 @@ pub trait GitObject:Debug {
 enum GitObjectRefType { Blob, Tree }
 
 #[derive(Debug)]
-pub(crate) struct GitObjectRef {
+pub struct GitObjectRef {
     // 100644 blob 2f781156939ad540b2434d012446154321e41e03	example_file.txt
-    permissions: u32,
-    ref_type: GitObjectRefType,
-    hash: String,
-    content: String
+    pub permissions: u32,
+    pub ref_type: String,
+    pub hash: String,
+    pub content: String
 }
 
 impl GitObjectRef {
     fn as_line(&self) -> String {
-        format!("{} {:?} {} {}", self.permissions, self.ref_type, self.hash, self.content)
+        format!("{} {} {} {}", self.permissions, self.ref_type, self.hash, self.content)
     }
 }
 
@@ -55,11 +56,12 @@ impl GitBlob {
 }
 
 impl GitTree {
-    pub(crate) fn new(content: &str) -> Self {
-        Self { refs: vec![] }
+    pub fn new(content: &str) -> Self {
+        tree::parse(content)
     }
 }
 
+#[derive(Debug)]
 pub struct GitIndexEntry {
     pub ctime_seconds: u32,
     pub ctime_nanoseconds: u32,
@@ -76,6 +78,7 @@ pub struct GitIndexEntry {
     pub path: String,
 }
 
+#[derive(Debug)]
 pub struct GitIndex {
     pub entries: Vec<GitIndexEntry>
 }
@@ -84,53 +87,6 @@ impl GitIndex {
     pub fn add_entry(&mut self, entry: GitIndexEntry) {
         // TODO: sorting and stuff
         self.entries.push(entry);
-    }
-}
-
-impl GitIndexEntry {
-    pub fn from_path(
-        path: impl Into<PathBuf>,
-        mode: Option<u32>,
-        sha1: Option<String>
-    ) -> Self {
-        let binding = path.into();
-
-        let meta= fs::metadata(&binding).unwrap();
-        let hash = sha1.unwrap_or_else(|| hash::from_path(&binding));
-        let mode = mode.unwrap_or_else(|| meta.mode());
-
-        let path_ = binding.as_path();
-        let hash_bytes : [u8; 20] = hash.as_bytes()[0..20].try_into().unwrap();
-
-        GitIndexEntry {
-            ctime_seconds: meta.ctime() as u32,
-            ctime_nanoseconds: meta.ctime_nsec() as u32,
-            mtime_seconds: meta.mtime() as u32,
-            mtime_nanoseconds: meta.mtime_nsec() as u32,
-            dev: meta.dev() as u32,
-            ino: meta.ino() as u32,
-            mode,
-            uid: meta.uid(),
-            gid: meta.gid(),
-            size: meta.size() as u32,
-            hash: hash_bytes,
-            flags: Flags::empty(),
-            path: path_.display().to_string()
-        }
-    }
-}
-
-impl From<&GitIndexEntry> for GitObjectRef {
-    fn from(item: &GitIndexEntry) -> Self {
-        let file = fs::read(&item.path).unwrap();
-        let content = String::from_utf8(file).expect("String parsing error");
-
-        GitObjectRef {
-            permissions: item.mode,
-            ref_type: Blob,
-            hash: hash::from_string(&content),
-            content
-        }
     }
 }
 
@@ -150,7 +106,59 @@ bitflags! {
 
 impl Flags {
     pub fn as_u16(&self) -> u16 {
-        self.bits() as u16
+        self.bits()
+    }
+
+    pub fn to_memory(&self) -> Flags {
+        Flags::from_bits_retain(self.bits())
+    }
+}
+
+impl GitIndexEntry {
+    pub fn from_path(
+        path: impl Into<PathBuf>,
+        mode: Option<u32>,
+        sha1: Option<String>
+    ) -> Self {
+        let binding = path.into();
+
+        let meta= fs::metadata(&binding).unwrap();
+        let hash = sha1.unwrap_or_else(|| hash::from_path(&binding));
+        let mode = mode.unwrap_or_else(|| meta.mode());
+
+        let path_ = binding.as_path();
+        let hash_bytes : [u8; 20] = hash.as_bytes()[0..20].try_into().unwrap();
+
+        let mut flags = Flags::empty();
+        let len = binding.as_path().to_str().unwrap().len();
+        flags = Flags::from_bits_retain(len as u16 & 0x0fff);
+
+        GitIndexEntry {
+            ctime_seconds: meta.ctime() as u32,
+            ctime_nanoseconds: meta.ctime_nsec() as u32,
+            mtime_seconds: meta.mtime() as u32,
+            mtime_nanoseconds: meta.mtime_nsec() as u32,
+            dev: meta.dev() as u32,
+            ino: meta.ino() as u32,
+            mode,
+            uid: meta.uid(),
+            gid: meta.gid(),
+            size: meta.size() as u32,
+            hash: hash_bytes,
+            flags,
+            path: path_.display().to_string()
+        }
+    }
+}
+
+impl From<&GitIndexEntry> for GitObjectRef {
+    fn from(item: &GitIndexEntry) -> Self {
+        GitObjectRef {
+            permissions: item.mode,
+            ref_type: "blob".parse().unwrap(),
+            hash: String::from_utf8(Vec::from(item.hash)).unwrap(),
+            content: item.path.to_string()
+        }
     }
 }
 
