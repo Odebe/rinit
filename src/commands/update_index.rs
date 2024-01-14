@@ -1,6 +1,6 @@
 use crate::commands::UpdateIndexArgs;
 use crate::storage::Storage;
-use crate::structs::{GitBlob, GitIndexEntry};
+use crate::structs::git_index::GitIndexEntry;
 use crate::utils::files::read_file;
 
 // git update-index --add --cacheinfo 100644 83baae61804e65cc73a7201a7252750c76066a30 Cargo.lock

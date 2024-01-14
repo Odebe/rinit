@@ -1,6 +1,6 @@
 use crate::commands::{HashObjectArgs};
 use crate::storage::Storage;
-use crate::structs::{GitBlob};
+use crate::structs::git_blob::GitBlob;
 use crate::utils::files::{read_stdin};
 
 pub fn call(storage: Storage, args: HashObjectArgs) {

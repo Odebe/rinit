@@ -1,6 +1,7 @@
 use crate::commands::{WriteTreeArgs};
 use crate::storage::Storage;
-use crate::structs::{GitObject, GitTree};
+use crate::structs::git_object::GitObject;
+use crate::structs::git_tree::GitTree;
 
 pub fn call(storage: Storage, _args: WriteTreeArgs) {
     let tree: GitTree = storage.read_index().into();

@@ -1,14 +1,13 @@
 mod storage;
-mod structs;
 mod utils;
 mod formats;
 mod commands;
+mod structs;
 
 use clap::Parser;
 
 use crate::utils::files::{get_current_dir};
 use crate::storage::{Storage};
-use crate::structs::*;
 use crate::commands::{Commands, Cli};
 
 fn main() {
