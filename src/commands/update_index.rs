@@ -13,8 +13,8 @@ fn add_entry(storage: Storage, args: UpdateIndexArgs) {
     let UpdateIndexArgs { mode, sha1, path, add, .. } = args;
     let entry = GitIndexEntry::from_path(path.unwrap(), mode, sha1);
 
-    println!("{:?}", entry);
-
     index.add_entry(entry);
     storage.save_index(&index);
+
+    println!("{:?}", index);
 }

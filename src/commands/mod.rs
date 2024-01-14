@@ -1,5 +1,9 @@
+pub mod hash_object;
+pub mod update_index;
+pub mod write_tree;
+pub mod cat_file;
+
 use clap::{Args, Parser, Subcommand};
-use crate::storage::Storage;
 
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "rinit")]
