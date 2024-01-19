@@ -36,7 +36,7 @@ impl Storage {
 
     pub fn persist_object(&self, object: &dyn GitObject) {
         let hash = object.hash();
-        let (catalog, index) = hash.split_at(2);
+        let (catalog, _index) = hash.split_at(2);
         let obj_dir = self.objects_path().join(catalog);
         let file_path = self.object_path( &object.hash());
         let body = serialization::call(object);

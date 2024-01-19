@@ -27,18 +27,12 @@ impl GitTree {
     }
 }
 
-impl GitObjectRef {
-    fn as_line(&self) -> String {
-        format!("{} {} {} {}", self.permissions, self.ref_type.to_string(), self.hash, self.content)
-    }
-}
-
 impl GitObject for GitTree {
     fn content(&self) -> Rc<String> {
         let value =
             self.refs
                 .iter()
-                .map(|r| r.as_line())
+                .map(|r| r.to_string())
                 .collect::<Vec<_>>()
                 .join("\n");
 
@@ -46,6 +40,12 @@ impl GitObject for GitTree {
     }
     fn hash(&self) -> Rc<String> { Rc::new(hash::from_string(&self.content())) }
     fn git_type(&self) -> GitObjectType { GitObjectType::Tree }
+}
+
+impl Display for GitObjectRef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {} {} {}", self.permissions, self.ref_type, self.hash, self.content)
+    }
 }
 
 impl From<&GitIndexEntry> for GitObjectRef {

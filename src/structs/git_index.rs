@@ -1,4 +1,5 @@
 use std::fs;
+use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
@@ -8,17 +9,22 @@ use crate::structs::flags::Flags;
 use crate::utils::hash;
 
 #[derive(Debug)]
-pub struct GitIndexEntry {
+pub struct GitIndexEntryStats {
     pub ctime_seconds: u32,
     pub ctime_nanoseconds: u32,
     pub mtime_seconds: u32,
     pub mtime_nanoseconds: u32,
     pub dev: u32,
     pub ino: u32,
-    pub mode: u32,
     pub uid: u32,
     pub gid: u32,
-    pub size: u32,
+    pub size: u32
+}
+
+#[derive(Debug)]
+pub struct GitIndexEntry {
+    pub stats: GitIndexEntryStats,
+    pub mode: u32,
     pub hash: [u8; 20],
     pub flags: Flags,
     pub path: String,
@@ -27,6 +33,22 @@ pub struct GitIndexEntry {
 #[derive(Debug)]
 pub struct GitIndex {
     pub entries: Vec<GitIndexEntry>
+}
+
+impl From<Metadata> for GitIndexEntryStats {
+    fn from(meta: Metadata) -> Self {
+        GitIndexEntryStats {
+            ctime_seconds: meta.ctime() as u32,
+            ctime_nanoseconds: meta.ctime_nsec() as u32,
+            mtime_seconds: meta.mtime() as u32,
+            mtime_nanoseconds: meta.mtime_nsec() as u32,
+            dev: meta.dev() as u32,
+            ino: meta.ino() as u32,
+            uid: meta.uid(),
+            gid: meta.gid(),
+            size: meta.size() as u32
+        }
+    }
 }
 
 const GIT_INDEX_HEADER: &[u8; 4] = b"DIRC";
@@ -71,18 +93,10 @@ impl GitIndexEntry {
         flags = Flags::from_bits_retain(len as u16 & 0x0fff);
 
         GitIndexEntry {
-            ctime_seconds: meta.ctime() as u32,
-            ctime_nanoseconds: meta.ctime_nsec() as u32,
-            mtime_seconds: meta.mtime() as u32,
-            mtime_nanoseconds: meta.mtime_nsec() as u32,
-            dev: meta.dev() as u32,
-            ino: meta.ino() as u32,
             mode,
-            uid: meta.uid(),
-            gid: meta.gid(),
-            size: meta.size() as u32,
-            hash: hash_bytes,
             flags,
+            stats: meta.into(),
+            hash: hash_bytes,
             path: path_.display().to_string()
         }
     }
@@ -108,16 +122,18 @@ fn write_entry_path<W: Write>(writer: &mut W, s: &str) -> io::Result<()> {
 }
 
 fn write_git_index_entry<W: Write>(writer: &mut W, entry: &GitIndexEntry) -> io::Result<()> {
-    writer.write_u32::<BigEndian>(entry.ctime_seconds)?;
-    writer.write_u32::<BigEndian>(entry.ctime_nanoseconds)?;
-    writer.write_u32::<BigEndian>(entry.mtime_seconds)?;
-    writer.write_u32::<BigEndian>(entry.mtime_nanoseconds)?;
-    writer.write_u32::<BigEndian>(entry.dev)?;
-    writer.write_u32::<BigEndian>(entry.ino)?;
+    let stats = &entry.stats;
+
+    writer.write_u32::<BigEndian>(stats.ctime_seconds)?;
+    writer.write_u32::<BigEndian>(stats.ctime_nanoseconds)?;
+    writer.write_u32::<BigEndian>(stats.mtime_seconds)?;
+    writer.write_u32::<BigEndian>(stats.mtime_nanoseconds)?;
+    writer.write_u32::<BigEndian>(stats.dev)?;
+    writer.write_u32::<BigEndian>(stats.ino)?;
     writer.write_u32::<BigEndian>(entry.mode)?;
-    writer.write_u32::<BigEndian>(entry.uid)?;
-    writer.write_u32::<BigEndian>(entry.gid)?;
-    writer.write_u32::<BigEndian>(entry.size)?;
+    writer.write_u32::<BigEndian>(stats.uid)?;
+    writer.write_u32::<BigEndian>(stats.gid)?;
+    writer.write_u32::<BigEndian>(stats.size)?;
     writer.write_all(&entry.hash)?;
     writer.write_u16::<BigEndian>(entry.flags.as_u16())?;
     write_entry_path(writer, &entry.path)?;
@@ -201,16 +217,18 @@ fn parse_git_index(file_path: &PathBuf) -> io::Result<GitIndex> {
             };
 
         let entry = GitIndexEntry {
-            ctime_seconds,
-            ctime_nanoseconds,
-            mtime_seconds,
-            mtime_nanoseconds,
-            dev,
-            ino,
+            stats: GitIndexEntryStats {
+                ctime_seconds,
+                ctime_nanoseconds,
+                mtime_seconds,
+                mtime_nanoseconds,
+                dev,
+                ino,
+                uid,
+                gid,
+                size,
+            },
             mode,
-            uid,
-            gid,
-            size,
             hash,
             flags,
             path,
